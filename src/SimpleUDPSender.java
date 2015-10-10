@@ -18,13 +18,12 @@ public class SimpleUDPSender {
 		DatagramPacket pkt;
 		byte[] data = new byte[20];
 		ByteBuffer b = ByteBuffer.wrap(data);
-
 		CRC32 crc = new CRC32();
 
 		for (int i = 1; i <= num; i++)
 		{
 			b.clear();
-			// reserve space for checksum
+			// reserve space for checksum so that checksum is peformed with packet number
 			b.putLong(0);
 			b.putInt(i);
 			crc.reset();
