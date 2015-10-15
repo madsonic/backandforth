@@ -22,74 +22,129 @@ public class FileSender {
 		String host = args[0];
 		int port = Integer.parseInt(args[1]);
 		Path path = Paths.get(args[2]);
+		
 		DatagramSocket socket = null;
+		FileChannel chnl = null;
+		InetSocketAddress addr = null;
 		
 		try {
-			// send
-			InetSocketAddress addr = new InetSocketAddress(host, port);
+			chnl = FileChannel.open(path, StandardOpenOption.READ);
+			long fileSize = chnl.size();
+			long numSegments = (long)Math.ceil((double)fileSize / (double)dataSize);
+			addr = new InetSocketAddress(host, port);
 			socket = new DatagramSocket();
-			DatagramPacket p = makePacket(path, addr);
-			assert p != null; // pkt cannot be empty
-			socket.send(p);
 			
-			// listen to ack
-			// need to check ack packet corruptibility
-			byte[] ack = new byte[ackPktSize];
-			DatagramPacket ackPkt = new DatagramPacket(ack, ack.length);
-			ByteBuffer b = ByteBuffer.wrap(ack);
+			// Main delivery
+			long seqNum;
+			DatagramPacket p;
 			
-			while (true) {
-				socket.receive(ackPkt);
+			for (long i = -1; i < numSegments; ++i) {
+				seqNum = i * dataSize;
 				
-				// resend if ack is corrupted/nak/timeout
-				if (isCorrupt(ackPkt) || isNak(ackPkt)) {
-					System.out.println("resending");
-					socket.send(p);
+				if (i < 0) {
+					// send a info packet with last seg size and num seg
+					// this packet must be delivered before the main delivery starts
+					System.out.println("sending init");
+					p = makeInitPacket(addr, seqNum, fileSize, numSegments);
+				} else if (i == numSegments - 1) {
+					// add fin flag
+					System.out.println("last packet");
+					p = makeDataPacket(chnl, addr, seqNum, true);
 				} else {
-					// packet succesfully sent and acknowledged
-					System.out.println("acknowledged");
-					break;
+					System.out.println("normal packet");
+					p = makeDataPacket(chnl, addr, seqNum, false);
 				}
-			} 
+				
+				assert p != null; // pkt cannot be empty
+				socket.send(p);
+				
+				// listen to ack
+				// need to check ack packet corruptibility
+				byte[] ack = new byte[infoPktSize];
+				DatagramPacket ackPkt = new DatagramPacket(ack, ack.length);
+				
+				while (true) {
+					socket.receive(ackPkt);
+					
+					// resend if ack is corrupted/nak/timeout
+					if (isCorrupt(ackPkt) || isNak(ackPkt)) {
+						System.out.println("resending");
+						socket.send(p);
+					} else {
+						// packet succesfully sent and acknowledged
+						System.out.println("acknowledged");
+						break;
+					}
+				} 
+			}
+			
 		} catch (SocketException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();
 		} finally {
 			if (socket != null) socket.close();
+			if (chnl != null)
+				try {
+					System.out.println("closing channel");
+					chnl.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 		}
 	}
 	
-	private static DatagramPacket makePacket(Path path, InetSocketAddress addr) {
-		DatagramPacket pkt;
-		byte[] data = new byte[arraySize];
+	private static DatagramPacket makeInitPacket(InetSocketAddress addr, long seqNum, long fileSize, long numSeg) {
+		return makeOutPacket(null, addr, seqNum, false, true, fileSize, numSeg, false);
+	}
+	
+	private static DatagramPacket makeDataPacket(FileChannel chnl, 
+												InetSocketAddress addr, 
+												long seqNum,
+												boolean fin) {
+		return makeOutPacket(chnl, addr, seqNum, fin, false, 0, 0, true);
+	}
+	
+	// Adds in all the necessary header
+	private static DatagramPacket makeOutPacket(FileChannel chnl, InetSocketAddress addr, 
+												long seqNum, boolean fin, boolean init,
+												long fileSize, long numSeg, boolean isData) {
+		DatagramPacket pkt = null;
+		byte[] data = new byte[pktSize];
 		ByteBuffer b = ByteBuffer.wrap(data);
-		FileChannel chnl = null;
 		
 		try {
-			b.clear();
-			b.putLong(0); // reserve for checksum
+			// reserve for headers
+			b.putLong(0);      // checksum
+			b.putLong(seqNum); // seq num
 			
-			chnl = FileChannel.open(path, StandardOpenOption.READ);
-			// put in data
-			chnl.read(b);
+			if (fin) {
+				b.put(yesByte);
+			} else {
+				b.put(noByte);
+			}
 			
-			// put in checksum
+			if (init) {
+				b.put(yesByte);
+			} else {
+				b.put(noByte);
+			}
+			
+			b.putLong(fileSize);
+			b.putLong(numSeg);
+
+			if (isData) {
+				chnl.read(b);
+			}
+
 			b.rewind();
-			long checkSum = makeCheckSum(data);
-			b.putLong(checkSum);
-			
+			b.putLong(makeCheckSum(data));
 			pkt = new DatagramPacket(data, data.length, addr);
 			return pkt;
 		} catch (IOException e) {
 			System.out.println(e);
-		} finally {
-			try {
-				if (chnl != null) chnl.close();
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
+		} 
+		assert pkt != null;
 		return null;
 	}
 }

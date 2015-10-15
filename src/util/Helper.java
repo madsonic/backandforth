@@ -1,24 +1,27 @@
 package util;
 
-import static util.Helper.ackPktSize;
-import static util.Helper.makeCheckSum;
-
-import java.io.IOException;
 import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.nio.ByteBuffer;
 import java.util.zip.CRC32;
 
 public class Helper {
-	public static final int arraySize = 1000;
+	public static final int pktSize = 1000;
 	public static final int checksumLen = 8;
-	public static final int headerSize = checksumLen;
-	public static final int ackPktSize = checksumLen + 1;
-	public static final byte ackbyte = 0x1;
-	public static final byte nakbyte = 0x0;
+	public static final int seqNumLen = 8;
+	public static final int ackLen = 1;
+	public static final int finLen = 1;
+	public static final int initLen = 1;
+	public static final int fileSizeLen = 8;
+	public static final int numSegLen = 8;
+	public static final int headerSize = checksumLen + seqNumLen + finLen + initLen + fileSizeLen + numSegLen;
+	public static final int dataSize = pktSize - headerSize;
+	public static final int infoPktSize = checksumLen + ackLen;
+	public static final byte yesByte = 1;
+	public static final byte noByte = 0;
 	
 	
 	public static long makeCheckSum(byte[] data) {
+		assert data.length > checksumLen;
 		CRC32 crc32 = new CRC32();
 		crc32.update(data, checksumLen, data.length - checksumLen);
 		return crc32.getValue();
@@ -46,54 +49,62 @@ public class Helper {
 		ByteBuffer b = ByteBuffer.wrap(data);
 		byte ackFlag = b.get(checksumLen);
 		
-		if (ackFlag == ackbyte) {
+		if (ackFlag == yesByte) {
 			return false;
-		} else if (ackFlag == nakbyte) {
+		} else {
+			return true;
+		}
+	}
+	
+	public static boolean isFin(DatagramPacket pkt) {
+		byte[] data = pkt.getData();
+		ByteBuffer b = ByteBuffer.wrap(data);
+		byte finFlag = b.get(checksumLen + seqNumLen);
+		
+		if (finFlag == yesByte) {
 			return true;
 		} else {
-			assert false;
 			return false;
 		}
 	}
 	
-	public static void sendAck(DatagramSocket socket, DatagramPacket pkt) {
-		sendAckPkt(socket, pkt, true);
-	}
-	
-	public static void sendNak(DatagramSocket socket, DatagramPacket pkt) {
-		sendAckPkt(socket, pkt, false);
-	}
-	
-	/**
-	 * Makes a ack packet
-	 * @param socket
-	 * @param pkt
-	 * @param ack ack if true nak if false
-	 */
-	private static void sendAckPkt(DatagramSocket socket, DatagramPacket pkt, boolean ack) {
-		byte[] ackMsg = new byte[ackPktSize];
-		ByteBuffer b = ByteBuffer.wrap(ackMsg);
-		byte ackFlag;
-		if (ack) {
-			ackFlag = ackbyte;
+	public static boolean isInit(DatagramPacket pkt) {
+		byte[] data = pkt.getData();
+		ByteBuffer b = ByteBuffer.wrap(data);
+		byte initFlag = b.get(checksumLen + seqNumLen + finLen);
+		
+		if (initFlag == yesByte) {
+			return true;
 		} else {
-			ackFlag = nakbyte;
-		}
-		b.putLong(0);
-		b.put(ackFlag);
-		
-		b.rewind();
-		b.putLong(makeCheckSum(ackMsg));
-		
-		DatagramPacket ackPkt = 
-				new DatagramPacket(ackMsg, ackMsg.length, 
-								   pkt.getAddress(), pkt.getPort());
-		try {
-			socket.send(ackPkt);
-		} catch (IOException e) {
-			System.out.println(e);
+			return false;
 		}
 	}
+	
+	public static long getSeqNum(DatagramPacket pkt) {
+		byte[] data = pkt.getData();
+		ByteBuffer b = ByteBuffer.wrap(data);
+		long num = b.getLong(checksumLen);
+		
+		return num;
+	}
+
+	public static long getFileSize(DatagramPacket pkt) {
+		byte[] data = pkt.getData();
+		ByteBuffer b = ByteBuffer.wrap(data);
+		long size = b.getLong(checksumLen + seqNumLen + finLen + initLen);
+		
+		return size;
+	}
+	
+	public static long getNumSeg(DatagramPacket pkt) {
+		byte[] data = pkt.getData();
+		ByteBuffer b = ByteBuffer.wrap(data);
+		long num = b.getLong(checksumLen + seqNumLen + finLen + initLen + fileSizeLen);
+		
+		return num;
+	}
+	
+	
 	
 	final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
 	public static String bytesToHex(byte[] bytes) {
@@ -103,6 +114,7 @@ public class Helper {
 	        hexChars[j * 2] = hexArray[v >>> 4];
 	        hexChars[j * 2 + 1] = hexArray[v & 0x0F];
 	    }
+	    System.out.println(hexChars.length);
 	    return new String(hexChars);
 	}
 }
