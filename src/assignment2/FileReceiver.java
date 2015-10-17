@@ -2,9 +2,7 @@ package assignment2;
 
 import static util.Helper.*;
 
-import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
 import java.nio.*;
@@ -12,8 +10,6 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.HashSet;
-
-import static util.Helper.*;
 
 public class FileReceiver {
 	public static void main(String[] args) {
@@ -26,9 +22,9 @@ public class FileReceiver {
 		int port = Integer.parseInt(args[0]);
 		FileChannel out = null;
 		DatagramSocket socket = null;
-		HashSet<Long> set = new HashSet<Long>();
-		long numSegments = 1;
+		HashSet<Long> seqNumSet = new HashSet<Long>();
 		long fileSize = dataSize;
+		long seqNum = -dataSize;
 		
 		try {
 			socket = new DatagramSocket(port);
@@ -36,51 +32,49 @@ public class FileReceiver {
 			DatagramPacket pkt = new DatagramPacket(data, data.length);
 			ByteBuffer b = ByteBuffer.wrap(data);
 			
-			out = FileChannel.open(Paths.get("test.txt"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
 			
 			System.out.println("Listening on port: " + port);
 			
-			for (long i = -1; i < numSegments; ++i) {
+			while (true) {
 				socket.receive(pkt);
-				long seqNum = getSeqNum(pkt);
+				System.out.println("seq #" + seqNum);
 				
 				if (isCorrupt(pkt)) {
 					System.out.println("corrupt packet");
-					sendNak(socket, pkt);
-					--i;
-				} else if (set.contains(seqNum)) {
+					
+					sendNak(socket, pkt, seqNum);
+					continue;
+				} 
+				seqNum = getSeqNum(pkt);
+				
+				if (seqNumSet.contains(seqNum)) {
 					System.out.println("dropping duplicate packet");
-					sendAck(socket, pkt);
-					--i;
+					
+					sendAck(socket, pkt, seqNum);
 					continue;
 				} else if (isInit(pkt)) {
 					// it's a init packet
-					System.out.println("Recv init packet");
+					System.out.println("Rcv init packet");
+					
 					fileSize = getFileSize(pkt);
-					numSegments = getNumSeg(pkt);
-					sendAck(socket, pkt);
-					set.add(seqNum);
-				} else if (isFin(pkt)) {
-					set.add(seqNum);
-					// set position after header so that only data is written out
-					b.position(headerSize);
-					out.write(b, seqNum);
-					out.force(true);
-					out.truncate(fileSize);
+					System.out.println("filename " + getFilename(pkt));
+					out = FileChannel.open(Paths.get(getFilename(pkt)), 
+										   StandardOpenOption.CREATE, 
+										   StandardOpenOption.WRITE,
+										   StandardOpenOption.SYNC);
 					
-					sendAck(socket, pkt);
-					System.out.println("Rcv fin packet");
-					
-					System.out.println("Finished");
+					sendAck(socket, pkt, seqNum);
+					seqNumSet.add(seqNum);
 				} else {
-					set.add(seqNum);
 					// set position after header so that only data is written out
+					System.out.println("Rcv normal packet");
 					b.position(headerSize);
 					out.write(b, seqNum);
 					out.force(true);
+					if (isFin(pkt)) { out.truncate(fileSize); }
 					
-					System.out.println("Rcv normal packet");
-					sendAck(socket, pkt);
+					sendAck(socket, pkt, seqNum);
+					seqNumSet.add(seqNum);
 				}
 				
 			}
@@ -104,12 +98,12 @@ public class FileReceiver {
 		}
 	}
 	
-	public static void sendAck(DatagramSocket socket, DatagramPacket pkt) {
-		sendInfoPkt(socket, pkt, true);
+	public static void sendAck(DatagramSocket socket, DatagramPacket pkt, long seqNum) {
+		sendInfoPkt(socket, pkt, true, seqNum);
 	}
 	
-	public static void sendNak(DatagramSocket socket, DatagramPacket pkt) {
-		sendInfoPkt(socket, pkt, false);
+	public static void sendNak(DatagramSocket socket, DatagramPacket pkt, long seqNum) {
+		sendInfoPkt(socket, pkt, false, seqNum);
 	}
 	
 	/**
@@ -118,7 +112,7 @@ public class FileReceiver {
 	 * @param pkt
 	 * @param ack ack if true nak if false
 	 */
-	private static void sendInfoPkt(DatagramSocket socket, DatagramPacket pkt, boolean ack) {
+	private static void sendInfoPkt(DatagramSocket socket, DatagramPacket pkt, boolean ack, long seqNum) {
 		byte ackFlag;
 		byte[] infoMsg = new byte[infoPktSize];
 		
@@ -132,12 +126,12 @@ public class FileReceiver {
 		
 		b.putLong(0); // checksum
 		b.put(ackFlag);
+		b.putLong(seqNum);
 		
 		b.rewind();
 		b.putLong(makeCheckSum(infoMsg));
 		DatagramPacket ackPkt = 
-				new DatagramPacket(infoMsg, infoMsg.length, 
-								   pkt.getAddress(), pkt.getPort());
+				new DatagramPacket(infoMsg, infoMsg.length, pkt.getAddress(), pkt.getPort());
 		try {
 			socket.send(ackPkt);
 		} catch (IOException e) {

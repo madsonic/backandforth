@@ -2,6 +2,10 @@ package util;
 
 import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
 import java.util.zip.CRC32;
 
 public class Helper {
@@ -12,12 +16,19 @@ public class Helper {
 	public static final int finLen = 1;
 	public static final int initLen = 1;
 	public static final int fileSizeLen = 8;
-	public static final int numSegLen = 8;
-	public static final int headerSize = checksumLen + seqNumLen + finLen + initLen + fileSizeLen + numSegLen;
+	public static final int filenameLen = 255;
+	
+//	public static final int numSegLen = 8;
+	public static final int headerSize = checksumLen + initLen + seqNumLen + finLen;
 	public static final int dataSize = pktSize - headerSize;
-	public static final int infoPktSize = checksumLen + ackLen;
+	public static final int infoPktSize = checksumLen + ackLen + seqNumLen;
 	public static final byte yesByte = 1;
 	public static final byte noByte = 0;
+	
+	public static final int charLen = 255;
+	public static final Charset charset = Charset.forName("UTF-8");
+//	public static final CharsetEncoder encoder = charset.newEncoder();
+//	public static final CharsetDecoder decoder = charset.newDecoder();
 	
 	
 	public static long makeCheckSum(byte[] data) {
@@ -59,7 +70,7 @@ public class Helper {
 	public static boolean isFin(DatagramPacket pkt) {
 		byte[] data = pkt.getData();
 		ByteBuffer b = ByteBuffer.wrap(data);
-		byte finFlag = b.get(checksumLen + seqNumLen);
+		byte finFlag = b.get(checksumLen + initLen + seqNumLen);
 		
 		if (finFlag == yesByte) {
 			return true;
@@ -71,7 +82,7 @@ public class Helper {
 	public static boolean isInit(DatagramPacket pkt) {
 		byte[] data = pkt.getData();
 		ByteBuffer b = ByteBuffer.wrap(data);
-		byte initFlag = b.get(checksumLen + seqNumLen + finLen);
+		byte initFlag = b.get(checksumLen);
 		
 		if (initFlag == yesByte) {
 			return true;
@@ -83,7 +94,15 @@ public class Helper {
 	public static long getSeqNum(DatagramPacket pkt) {
 		byte[] data = pkt.getData();
 		ByteBuffer b = ByteBuffer.wrap(data);
-		long num = b.getLong(checksumLen);
+		long num = b.getLong(checksumLen + initLen);
+		
+		return num;
+	}
+	
+	public static long getInfoSeqNum(DatagramPacket pkt) {
+		byte[] data = pkt.getData();
+		ByteBuffer b = ByteBuffer.wrap(data);
+		long num = b.getLong(checksumLen + initLen);
 		
 		return num;
 	}
@@ -91,20 +110,34 @@ public class Helper {
 	public static long getFileSize(DatagramPacket pkt) {
 		byte[] data = pkt.getData();
 		ByteBuffer b = ByteBuffer.wrap(data);
-		long size = b.getLong(checksumLen + seqNumLen + finLen + initLen);
+		long size = b.getLong(checksumLen + initLen + seqNumLen);
 		
 		return size;
 	}
 	
-	public static long getNumSeg(DatagramPacket pkt) {
+	public static String getFilename(DatagramPacket pkt) {
 		byte[] data = pkt.getData();
+		byte[] str = new byte[filenameLen];
 		ByteBuffer b = ByteBuffer.wrap(data);
-		long num = b.getLong(checksumLen + seqNumLen + finLen + initLen + fileSizeLen);
+		ByteBuffer strBuffer = ByteBuffer.wrap(str);
 		
-		return num;
+		b.position(checksumLen + initLen + seqNumLen + fileSizeLen);
+		b.get(str, 0, filenameLen);
+		
+		return byteBuffToStr(strBuffer); 
+	}		
+
+	public static ByteBuffer strToByteBuff(String s) {
+		byte[] data = new byte[s.length()];
+		ByteBuffer b = ByteBuffer.wrap(data);
+		b = charset.encode(s);
+		
+		return b;
 	}
 	
-	
+	public static String byteBuffToStr(ByteBuffer b) {
+		return charset.decode(b).toString().trim();
+	}
 	
 	final protected static char[] hexArray = "0123456789ABCDEF".toCharArray();
 	public static String bytesToHex(byte[] bytes) {

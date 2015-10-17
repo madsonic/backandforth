@@ -7,75 +7,86 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.HashSet;
 
 import static util.Helper.*;
 
 public class FileSender {
+	public static final int WAIT_TIME = 10; //////////////////////////////////////////////////////////////// CHANGE THIS BEFORE SUBMISSION
 
 	public static void main(String[] args) {
-		if (args.length != 3) {
-			System.err.println("Usage: SimpleUDPSender <host> <port> <path>");
+		if (args.length != 4) {
+			System.err.println("Usage: SimpleUDPSender <host> <port> <path> <filename>");
 			System.exit(-1);
 		}
+		
+		StopWatch watch = new StopWatch();
+		watch.start();
 		
 		// Setup from inputs
 		String host = args[0];
 		int port = Integer.parseInt(args[1]);
 		Path path = Paths.get(args[2]);
+		String filename = args[3];
 		
 		DatagramSocket socket = null;
 		FileChannel chnl = null;
 		InetSocketAddress addr = null;
+		byte[] ack = null;
+		DatagramPacket ackPkt = null;
+		long seqNum;
+		long rcvSeqNum;
+		DatagramPacket p;
 		
 		try {
 			chnl = FileChannel.open(path, StandardOpenOption.READ);
 			long fileSize = chnl.size();
 			long numSegments = (long)Math.ceil((double)fileSize / (double)dataSize);
+			System.out.println(numSegments);
 			addr = new InetSocketAddress(host, port);
 			socket = new DatagramSocket();
+			socket.setSoTimeout(WAIT_TIME);
+			
 			
 			// Main delivery
-			long seqNum;
-			DatagramPacket p;
-			
 			for (long i = -1; i < numSegments; ++i) {
 				seqNum = i * dataSize;
+				System.out.println("seq #" + seqNum);
 				
+				// make packets
 				if (i < 0) {
 					// send a info packet with last seg size and num seg
 					// this packet must be delivered before the main delivery starts
-					System.out.println("sending init");
-					p = makeInitPacket(addr, seqNum, fileSize, numSegments);
-				} else if (i == numSegments - 1) {
-					// add fin flag
-					System.out.println("last packet");
-					p = makeDataPacket(chnl, addr, seqNum, true);
-				} else {
+					System.out.println("init packet");
+					p = makeInitPacket(addr, seqNum, fileSize, filename);
+				}  else {
 					System.out.println("normal packet");
-					p = makeDataPacket(chnl, addr, seqNum, false);
+					p = makeDataPacket(chnl, addr, seqNum, i == numSegments - 1);
 				}
 				
 				assert p != null; // pkt cannot be empty
-				socket.send(p);
 				
-				// listen to ack
-				// need to check ack packet corruptibility
-				byte[] ack = new byte[infoPktSize];
-				DatagramPacket ackPkt = new DatagramPacket(ack, ack.length);
-				
+				// send packets and receive acknowledgements
 				while (true) {
-					socket.receive(ackPkt);
+					ack = new byte[infoPktSize];
+					ackPkt = new DatagramPacket(ack, ack.length);
+					socket.send(p);
 					
-					// resend if ack is corrupted/nak/timeout
-					if (isCorrupt(ackPkt) || isNak(ackPkt)) {
-						System.out.println("resending");
-						socket.send(p);
-					} else {
-						// packet succesfully sent and acknowledged
-						System.out.println("acknowledged");
-						break;
+					try {
+						socket.receive(ackPkt);
+						if (isCorrupt(ackPkt)) {
+							System.out.println("corrupted");
+							continue;
+						}
+						
+						rcvSeqNum = getSeqNum(ackPkt);
+						if (!isNak(ackPkt) && rcvSeqNum == seqNum) { break; }
+						
+					} catch (SocketTimeoutException timeoutException) {
+						System.out.println("timeout");
 					}
-				} 
+				}
+					
 			}
 			
 		} catch (SocketException e) {
@@ -92,23 +103,36 @@ public class FileSender {
 					e.printStackTrace();
 				}
 		}
+		watch.stop();
+		System.out.println("Time taken: " + watch.getTime());
 	}
 	
-	private static DatagramPacket makeInitPacket(InetSocketAddress addr, long seqNum, long fileSize, long numSeg) {
-		return makeOutPacket(null, addr, seqNum, false, true, fileSize, numSeg, false);
+	private static DatagramPacket makeInitPacket(InetSocketAddress addr, long seqNum, long fileSize, String filename) {
+		DatagramPacket pkt = null;
+		byte[] data = new byte[pktSize];
+		ByteBuffer b = ByteBuffer.wrap(data);
+		
+		
+		
+		// reserve for headers
+		b.putLong(0);                   // checksum
+		b.put(yesByte);                 // init flag
+		b.putLong(seqNum);              // seq num
+		b.putLong(fileSize);            // file size
+		b.put(strToByteBuff(filename)); // file name
+		
+		b.rewind();
+		b.putLong(makeCheckSum(data));
+		pkt = new DatagramPacket(data, data.length, addr);
+		
+		assert pkt != null;
+		return pkt;
 	}
 	
 	private static DatagramPacket makeDataPacket(FileChannel chnl, 
 												InetSocketAddress addr, 
 												long seqNum,
 												boolean fin) {
-		return makeOutPacket(chnl, addr, seqNum, fin, false, 0, 0, true);
-	}
-	
-	// Adds in all the necessary header
-	private static DatagramPacket makeOutPacket(FileChannel chnl, InetSocketAddress addr, 
-												long seqNum, boolean fin, boolean init,
-												long fileSize, long numSeg, boolean isData) {
 		DatagramPacket pkt = null;
 		byte[] data = new byte[pktSize];
 		ByteBuffer b = ByteBuffer.wrap(data);
@@ -116,6 +140,7 @@ public class FileSender {
 		try {
 			// reserve for headers
 			b.putLong(0);      // checksum
+			b.put(noByte);     // init flag
 			b.putLong(seqNum); // seq num
 			
 			if (fin) {
@@ -124,15 +149,46 @@ public class FileSender {
 				b.put(noByte);
 			}
 			
+			chnl.read(b);
+
+			b.rewind();
+			b.putLong(makeCheckSum(data));
+			pkt = new DatagramPacket(data, data.length, addr);
+			return pkt;
+		} catch (IOException e) {
+			System.out.println(e);
+		} 
+		assert pkt != null;
+		return null;
+	}
+	
+	// Adds in all the necessary header
+	private static DatagramPacket makeOutPacket(FileChannel chnl, InetSocketAddress addr, 
+												long seqNum, boolean fin, boolean init,
+												long fileSize, boolean isData) {
+		DatagramPacket pkt = null;
+		byte[] data = new byte[pktSize];
+		ByteBuffer b = ByteBuffer.wrap(data);
+		
+		try {
+			// reserve for headers
+			b.putLong(0);      // checksum
 			if (init) {
 				b.put(yesByte);
 			} else {
 				b.put(noByte);
 			}
+			b.putLong(seqNum); // seq num
+			
+			if (fin) {
+				b.put(yesByte);
+			} else {
+				b.put(noByte);
+			}
+			
 			
 			b.putLong(fileSize);
-			b.putLong(numSeg);
-
+			
 			if (isData) {
 				chnl.read(b);
 			}
