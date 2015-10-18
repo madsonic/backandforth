@@ -1,6 +1,6 @@
 package assignment2;
 
-import static util.Helper.*;
+import static assignment2.Helper.*;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;

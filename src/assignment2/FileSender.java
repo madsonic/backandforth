@@ -1,5 +1,7 @@
 package assignment2;
 
+import static assignment2.Helper.*;
+
 import java.io.IOException;
 import java.net.*;
 import java.nio.*;
@@ -7,9 +9,6 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.HashSet;
-
-import static util.Helper.*;
 
 public class FileSender {
 	public static final int WAIT_TIME = 10; //////////////////////////////////////////////////////////////// CHANGE THIS BEFORE SUBMISSION
@@ -42,7 +41,7 @@ public class FileSender {
 			chnl = FileChannel.open(path, StandardOpenOption.READ);
 			long fileSize = chnl.size();
 			long numSegments = (long)Math.ceil((double)fileSize / (double)dataSize);
-			System.out.println(numSegments);
+//System.out.println(numSegments);
 			addr = new InetSocketAddress(host, port);
 			socket = new DatagramSocket();
 			socket.setSoTimeout(WAIT_TIME);
@@ -51,16 +50,16 @@ public class FileSender {
 			// Main delivery
 			for (long i = -1; i < numSegments; ++i) {
 				seqNum = i * dataSize;
-				System.out.println("seq #" + seqNum);
+//System.out.println("seq #" + seqNum);
 				
 				// make packets
 				if (i < 0) {
 					// send a info packet with last seg size and num seg
 					// this packet must be delivered before the main delivery starts
-					System.out.println("init packet");
+//System.out.println("init packet");
 					p = makeInitPacket(addr, seqNum, fileSize, filename);
 				}  else {
-					System.out.println("normal packet");
+//System.out.println("normal packet");
 					p = makeDataPacket(chnl, addr, seqNum, i == numSegments - 1);
 				}
 				
@@ -75,7 +74,7 @@ public class FileSender {
 					try {
 						socket.receive(ackPkt);
 						if (isCorrupt(ackPkt)) {
-							System.out.println("corrupted");
+//System.out.println("corrupted");
 							continue;
 						}
 						
@@ -83,7 +82,7 @@ public class FileSender {
 						if (!isNak(ackPkt) && rcvSeqNum == seqNum) { break; }
 						
 					} catch (SocketTimeoutException timeoutException) {
-						System.out.println("timeout");
+//System.out.println("timeout");
 					}
 				}
 					
@@ -97,7 +96,7 @@ public class FileSender {
 			if (socket != null) socket.close();
 			if (chnl != null)
 				try {
-					System.out.println("closing channel");
+//System.out.println("closing channel");
 					chnl.close();
 				} catch (IOException e) {
 					e.printStackTrace();

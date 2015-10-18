@@ -1,4 +1,4 @@
-package util;
+package assignment2;
 
 import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
