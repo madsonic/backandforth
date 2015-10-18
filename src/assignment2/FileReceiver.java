@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.*;
 import java.nio.*;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.HashSet;
@@ -20,7 +21,8 @@ public class FileReceiver {
 		
 		// Set up variables
 		int port = Integer.parseInt(args[0]);
-		FileChannel out = null;
+		FileChannel fc = null;
+		MappedByteBuffer out = null;
 		DatagramSocket socket = null;
 		HashSet<Long> seqNumSet = new HashSet<Long>();
 		long fileSize = dataSize;
@@ -58,10 +60,10 @@ public class FileReceiver {
 					
 					fileSize = getFileSize(pkt);
 					System.out.println("filename " + getFilename(pkt));
-					out = FileChannel.open(Paths.get(getFilename(pkt)), 
-										   StandardOpenOption.CREATE, 
-										   StandardOpenOption.WRITE,
-										   StandardOpenOption.SYNC);
+					fc = FileChannel.open(Paths.get(getFilename(pkt)), 
+							StandardOpenOption.CREATE, 
+							StandardOpenOption.WRITE,
+							StandardOpenOption.READ);
 					
 					sendAck(socket, pkt, seqNum);
 					seqNumSet.add(seqNum);
@@ -69,9 +71,19 @@ public class FileReceiver {
 					// set position after header so that only data is written out
 					System.out.println("Rcv normal packet");
 					b.position(headerSize);
-					out.write(b, seqNum);
-					out.force(true);
-					if (isFin(pkt)) { out.truncate(fileSize); }
+					
+					// use mappedbytebuffer for file size above 50mb
+//					if (fileSize < fileSizeLimit) {
+//						fc.write(b, seqNum);
+//						fc.force(true);
+//					} else {
+//					}
+//					out.position((int)seqNum);
+					out = fc.map(MapMode.READ_WRITE, seqNum, dataSize);
+					out.put(b);
+					
+					
+					if (isFin(pkt)) { fc.truncate(fileSize); }
 					
 					sendAck(socket, pkt, seqNum);
 					seqNumSet.add(seqNum);
@@ -88,7 +100,7 @@ public class FileReceiver {
 		} finally {
 			try {
 				System.out.println("closing");
-				if (out != null) out.close();
+				if (fc != null) fc.close();
 				if (socket != null) socket.close();
 			} catch (SocketException e) {
 				e.printStackTrace();

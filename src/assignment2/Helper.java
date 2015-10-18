@@ -18,12 +18,13 @@ public class Helper {
 	public static final int fileSizeLen = 8;
 	public static final int filenameLen = 255;
 	
-//	public static final int numSegLen = 8;
 	public static final int headerSize = checksumLen + initLen + seqNumLen + finLen;
 	public static final int dataSize = pktSize - headerSize;
 	public static final int infoPktSize = checksumLen + ackLen + seqNumLen;
 	public static final byte yesByte = 1;
 	public static final byte noByte = 0;
+	
+	public static final long fileSizeLimit = 50000000; // 50 mb
 	
 	public static final int charLen = 255;
 	public static final Charset charset = Charset.forName("UTF-8");
