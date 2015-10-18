@@ -72,23 +72,14 @@ public class FileReceiver {
 					System.out.println("Rcv normal packet");
 					b.position(headerSize);
 					
-					// use mappedbytebuffer for file size above 50mb
-//					if (fileSize < fileSizeLimit) {
-//						fc.write(b, seqNum);
-//						fc.force(true);
-//					} else {
-//					}
-//					out.position((int)seqNum);
 					out = fc.map(MapMode.READ_WRITE, seqNum, dataSize);
 					out.put(b);
-					
 					
 					if (isFin(pkt)) { fc.truncate(fileSize); }
 					
 					sendAck(socket, pkt, seqNum);
 					seqNumSet.add(seqNum);
 				}
-				
 			}
 			
 		} catch (SocketException e) {
@@ -128,11 +119,12 @@ public class FileReceiver {
 		byte ackFlag;
 		byte[] infoMsg = new byte[infoPktSize];
 		
-		if (ack) {
-			ackFlag = yesByte;
-		} else {
-			ackFlag = noByte;
-		}
+		ackFlag = ack ? yesByte : noByte;
+//		if (ack) {
+//			ackFlag = yesByte;
+//		} else {
+//			ackFlag = noByte;
+//		}
 		
 		ByteBuffer b = ByteBuffer.wrap(infoMsg);
 		

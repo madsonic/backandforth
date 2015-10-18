@@ -2,10 +2,7 @@ package assignment2;
 
 import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
 import java.nio.charset.Charset;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CharsetEncoder;
 import java.util.zip.CRC32;
 
 public class Helper {
@@ -28,9 +25,6 @@ public class Helper {
 	
 	public static final int charLen = 255;
 	public static final Charset charset = Charset.forName("UTF-8");
-//	public static final CharsetEncoder encoder = charset.newEncoder();
-//	public static final CharsetDecoder decoder = charset.newDecoder();
-	
 	
 	public static long makeCheckSum(byte[] data) {
 		assert data.length > checksumLen;
@@ -46,14 +40,12 @@ public class Helper {
 		
 		long calcPktChksum = makeCheckSum(data);
 		
-//		System.out.println(calcPktChksum);
-//		System.out.println(pktChksum);
-		
-		if (pktChksum != calcPktChksum) {
-			return true;
-		} else {
-			return false;
-		}
+		return pktChksum != calcPktChksum;
+//		if (pktChksum != calcPktChksum) {
+//			return true;
+//		} else {
+//			return false;
+//		}
 	}
 	
 	public static boolean isNak(DatagramPacket pkt) {
@@ -61,11 +53,12 @@ public class Helper {
 		ByteBuffer b = ByteBuffer.wrap(data);
 		byte ackFlag = b.get(checksumLen);
 		
-		if (ackFlag == yesByte) {
-			return false;
-		} else {
-			return true;
-		}
+		return !(ackFlag == yesByte);
+//		if (ackFlag == yesByte) {
+//			return false;
+//		} else {
+//			return true;
+//		}
 	}
 	
 	public static boolean isFin(DatagramPacket pkt) {
@@ -73,11 +66,12 @@ public class Helper {
 		ByteBuffer b = ByteBuffer.wrap(data);
 		byte finFlag = b.get(checksumLen + initLen + seqNumLen);
 		
-		if (finFlag == yesByte) {
-			return true;
-		} else {
-			return false;
-		}
+		return finFlag == yesByte;
+//		if (finFlag == yesByte) {
+//			return true;
+//		} else {
+//			return false;
+//		}
 	}
 	
 	public static boolean isInit(DatagramPacket pkt) {
@@ -85,11 +79,12 @@ public class Helper {
 		ByteBuffer b = ByteBuffer.wrap(data);
 		byte initFlag = b.get(checksumLen);
 		
-		if (initFlag == yesByte) {
-			return true;
-		} else {
-			return false;
-		}
+		return initFlag == yesByte;
+//		if (initFlag == yesByte) {
+//			return true;
+//		} else {
+//			return false;
+//		}
 	}
 	
 	public static long getSeqNum(DatagramPacket pkt) {

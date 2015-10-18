@@ -63,8 +63,6 @@ public class FileSender {
 					p = makeDataPacket(chnl, addr, seqNum, i == numSegments - 1);
 				}
 				
-				assert p != null; // pkt cannot be empty
-				
 				// send packets and receive acknowledgements
 				while (true) {
 					ack = new byte[infoPktSize];
@@ -110,8 +108,6 @@ public class FileSender {
 		DatagramPacket pkt = null;
 		byte[] data = new byte[pktSize];
 		ByteBuffer b = ByteBuffer.wrap(data);
-		
-		
 		
 		// reserve for headers
 		b.putLong(0);                   // checksum
@@ -161,45 +157,4 @@ public class FileSender {
 		return null;
 	}
 	
-	// Adds in all the necessary header
-	private static DatagramPacket makeOutPacket(FileChannel chnl, InetSocketAddress addr, 
-												long seqNum, boolean fin, boolean init,
-												long fileSize, boolean isData) {
-		DatagramPacket pkt = null;
-		byte[] data = new byte[pktSize];
-		ByteBuffer b = ByteBuffer.wrap(data);
-		
-		try {
-			// reserve for headers
-			b.putLong(0);      // checksum
-			if (init) {
-				b.put(yesByte);
-			} else {
-				b.put(noByte);
-			}
-			b.putLong(seqNum); // seq num
-			
-			if (fin) {
-				b.put(yesByte);
-			} else {
-				b.put(noByte);
-			}
-			
-			
-			b.putLong(fileSize);
-			
-			if (isData) {
-				chnl.read(b);
-			}
-
-			b.rewind();
-			b.putLong(makeCheckSum(data));
-			pkt = new DatagramPacket(data, data.length, addr);
-			return pkt;
-		} catch (IOException e) {
-			System.out.println(e);
-		} 
-		assert pkt != null;
-		return null;
-	}
 }
