@@ -1,7 +1,5 @@
 package assignment2;
 
-import static assignment2.Helper.*;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
@@ -25,12 +23,12 @@ public class FileReceiver {
 		MappedByteBuffer out = null;
 		DatagramSocket socket = null;
 		HashSet<Long> seqNumSet = new HashSet<Long>();
-		long fileSize = dataSize;
-		long seqNum = -dataSize;
+		long fileSize = Helper.dataSize;
+		long seqNum = -Helper.dataSize;
 		
 		try {
 			socket = new DatagramSocket(port);
-			byte[] data = new byte[pktSize];
+			byte[] data = new byte[Helper.pktSize];
 			DatagramPacket pkt = new DatagramPacket(data, data.length);
 			ByteBuffer b = ByteBuffer.wrap(data);
 			
@@ -41,26 +39,26 @@ public class FileReceiver {
 				socket.receive(pkt);
 				System.out.println("seq #" + seqNum);
 				
-				if (isCorrupt(pkt)) {
+				if (Helper.isCorrupt(pkt)) {
 					System.out.println("corrupt packet");
 					
 					sendNak(socket, pkt, seqNum);
 					continue;
 				} 
-				seqNum = getSeqNum(pkt);
+				seqNum = Helper.getSeqNum(pkt);
 				
 				if (seqNumSet.contains(seqNum)) {
 					System.out.println("dropping duplicate packet");
 					
 					sendAck(socket, pkt, seqNum);
 					continue;
-				} else if (isInit(pkt)) {
+				} else if (Helper.isInit(pkt)) {
 					// it's a init packet
 					System.out.println("Rcv init packet");
 					
-					fileSize = getFileSize(pkt);
-					System.out.println("filename " + getFilename(pkt));
-					fc = FileChannel.open(Paths.get(getFilename(pkt)), 
+					fileSize = Helper.getFileSize(pkt);
+					System.out.println("filename " + Helper.getFilename(pkt));
+					fc = FileChannel.open(Paths.get(Helper.getFilename(pkt)), 
 							StandardOpenOption.CREATE, 
 							StandardOpenOption.WRITE,
 							StandardOpenOption.READ);
@@ -70,12 +68,17 @@ public class FileReceiver {
 				} else {
 					// set position after header so that only data is written out
 					System.out.println("Rcv normal packet");
-					b.position(headerSize);
+					b.position(Helper.headerSize);
 					
-					out = fc.map(MapMode.READ_WRITE, seqNum, dataSize);
-					out.put(b);
+					if (fileSize > Helper.fileSizeLimit) {
+						out = fc.map(MapMode.READ_WRITE, seqNum, Helper.dataSize);
+						out.put(b);
+					} else {
+						fc.write(b, seqNum);
+						fc.force(true);
+					}
 					
-					if (isFin(pkt)) { fc.truncate(fileSize); }
+					if (Helper.isFin(pkt)) { fc.truncate(fileSize); }
 					
 					sendAck(socket, pkt, seqNum);
 					seqNumSet.add(seqNum);
@@ -117,14 +120,9 @@ public class FileReceiver {
 	 */
 	private static void sendInfoPkt(DatagramSocket socket, DatagramPacket pkt, boolean ack, long seqNum) {
 		byte ackFlag;
-		byte[] infoMsg = new byte[infoPktSize];
+		byte[] infoMsg = new byte[Helper.infoPktSize];
 		
-		ackFlag = ack ? yesByte : noByte;
-//		if (ack) {
-//			ackFlag = yesByte;
-//		} else {
-//			ackFlag = noByte;
-//		}
+		ackFlag = ack ? Helper.yesByte : Helper.noByte;
 		
 		ByteBuffer b = ByteBuffer.wrap(infoMsg);
 		
@@ -133,7 +131,7 @@ public class FileReceiver {
 		b.putLong(seqNum);
 		
 		b.rewind();
-		b.putLong(makeCheckSum(infoMsg));
+		b.putLong(Helper.makeCheckSum(infoMsg));
 		DatagramPacket ackPkt = 
 				new DatagramPacket(infoMsg, infoMsg.length, pkt.getAddress(), pkt.getPort());
 		try {

@@ -1,7 +1,5 @@
 package assignment2;
 
-import static assignment2.Helper.*;
-
 import java.io.IOException;
 import java.net.*;
 import java.nio.*;
@@ -11,7 +9,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 
 public class FileSender {
-	public static final int WAIT_TIME = 10; //////////////////////////////////////////////////////////////// CHANGE THIS BEFORE SUBMISSION
+	public static final int WAIT_TIME = 5; //////////////////////////////////////////////////////////////// CHANGE THIS BEFORE SUBMISSION
 
 	public static void main(String[] args) {
 		if (args.length != 4) {
@@ -40,7 +38,7 @@ public class FileSender {
 		try {
 			chnl = FileChannel.open(path, StandardOpenOption.READ);
 			long fileSize = chnl.size();
-			long numSegments = (long)Math.ceil((double)fileSize / (double)dataSize);
+			long numSegments = (long)Math.ceil((double)fileSize / (double)Helper.dataSize);
 //System.out.println(numSegments);
 			addr = new InetSocketAddress(host, port);
 			socket = new DatagramSocket();
@@ -49,7 +47,7 @@ public class FileSender {
 			
 			// Main delivery
 			for (long i = -1; i < numSegments; ++i) {
-				seqNum = i * dataSize;
+				seqNum = i * Helper.dataSize;
 //System.out.println("seq #" + seqNum);
 				
 				// make packets
@@ -65,19 +63,19 @@ public class FileSender {
 				
 				// send packets and receive acknowledgements
 				while (true) {
-					ack = new byte[infoPktSize];
+					ack = new byte[Helper.infoPktSize];
 					ackPkt = new DatagramPacket(ack, ack.length);
 					socket.send(p);
 					
 					try {
 						socket.receive(ackPkt);
-						if (isCorrupt(ackPkt)) {
+						if (Helper.isCorrupt(ackPkt)) {
 //System.out.println("corrupted");
 							continue;
 						}
 						
-						rcvSeqNum = getSeqNum(ackPkt);
-						if (!isNak(ackPkt) && rcvSeqNum == seqNum) { break; }
+						rcvSeqNum = Helper.getSeqNum(ackPkt);
+						if (!Helper.isNak(ackPkt) && rcvSeqNum == seqNum) { break; }
 						
 					} catch (SocketTimeoutException timeoutException) {
 //System.out.println("timeout");
@@ -106,18 +104,18 @@ public class FileSender {
 	
 	private static DatagramPacket makeInitPacket(InetSocketAddress addr, long seqNum, long fileSize, String filename) {
 		DatagramPacket pkt = null;
-		byte[] data = new byte[pktSize];
+		byte[] data = new byte[Helper.pktSize];
 		ByteBuffer b = ByteBuffer.wrap(data);
 		
 		// reserve for headers
 		b.putLong(0);                   // checksum
-		b.put(yesByte);                 // init flag
+		b.put(Helper.yesByte);                 // init flag
 		b.putLong(seqNum);              // seq num
 		b.putLong(fileSize);            // file size
-		b.put(strToByteBuff(filename)); // file name
+		b.put(Helper.strToByteBuff(filename)); // file name
 		
 		b.rewind();
-		b.putLong(makeCheckSum(data));
+		b.putLong(Helper.makeCheckSum(data));
 		pkt = new DatagramPacket(data, data.length, addr);
 		
 		assert pkt != null;
@@ -129,25 +127,25 @@ public class FileSender {
 												long seqNum,
 												boolean fin) {
 		DatagramPacket pkt = null;
-		byte[] data = new byte[pktSize];
+		byte[] data = new byte[Helper.pktSize];
 		ByteBuffer b = ByteBuffer.wrap(data);
 		
 		try {
 			// reserve for headers
 			b.putLong(0);      // checksum
-			b.put(noByte);     // init flag
+			b.put(Helper.noByte);     // init flag
 			b.putLong(seqNum); // seq num
 			
 			if (fin) {
-				b.put(yesByte);
+				b.put(Helper.yesByte);
 			} else {
-				b.put(noByte);
+				b.put(Helper.noByte);
 			}
 			
 			chnl.read(b);
 
 			b.rewind();
-			b.putLong(makeCheckSum(data));
+			b.putLong(Helper.makeCheckSum(data));
 			pkt = new DatagramPacket(data, data.length, addr);
 			return pkt;
 		} catch (IOException e) {

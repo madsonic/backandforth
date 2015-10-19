@@ -41,11 +41,6 @@ public class Helper {
 		long calcPktChksum = makeCheckSum(data);
 		
 		return pktChksum != calcPktChksum;
-//		if (pktChksum != calcPktChksum) {
-//			return true;
-//		} else {
-//			return false;
-//		}
 	}
 	
 	public static boolean isNak(DatagramPacket pkt) {
@@ -54,11 +49,6 @@ public class Helper {
 		byte ackFlag = b.get(checksumLen);
 		
 		return !(ackFlag == yesByte);
-//		if (ackFlag == yesByte) {
-//			return false;
-//		} else {
-//			return true;
-//		}
 	}
 	
 	public static boolean isFin(DatagramPacket pkt) {
@@ -67,11 +57,6 @@ public class Helper {
 		byte finFlag = b.get(checksumLen + initLen + seqNumLen);
 		
 		return finFlag == yesByte;
-//		if (finFlag == yesByte) {
-//			return true;
-//		} else {
-//			return false;
-//		}
 	}
 	
 	public static boolean isInit(DatagramPacket pkt) {
@@ -80,11 +65,6 @@ public class Helper {
 		byte initFlag = b.get(checksumLen);
 		
 		return initFlag == yesByte;
-//		if (initFlag == yesByte) {
-//			return true;
-//		} else {
-//			return false;
-//		}
 	}
 	
 	public static long getSeqNum(DatagramPacket pkt) {
